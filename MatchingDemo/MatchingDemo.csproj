@@ -14,7 +14,10 @@
 	<PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.251110.2" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="CV1.md">
+    <None Update="CV.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="job.md">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

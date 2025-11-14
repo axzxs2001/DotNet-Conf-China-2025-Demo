@@ -15,6 +15,7 @@ namespace MatchingDemo
     {
         Task<string> PerfectTranslationAsync();
         Task<List<AgentResult>> CultureTranslationAsync(string cv);
+        Task<string> ApplyingMotivationAsync();
     }
     public class AIService : IAIService
     {
@@ -29,7 +30,6 @@ namespace MatchingDemo
             _credential = new ApiKeyCredential(parmeters[2]);
         }
 
-
         /// <summary>
         /// 翻译优化代理工作流
         /// </summary>
@@ -38,14 +38,32 @@ namespace MatchingDemo
         {
             var chatClient = new AzureOpenAIClient(new Uri(_endpoint), _credential).GetChatClient(_deploymentName).AsIChatClient();
             var translationInstructions = """
-                在不改变原意的情况下，将用户提供的信息翻译成日语。
+                **指令：**
+                将我提供的中文简历内容翻译成日语简历。
+
+                **要求：**
+                1. 保持原意，不增删信息。
+                2. 使用日本商务简历常见的专业表达方式。
+                3. 适当调整语序以符合日语自然用法。
+                4. 技术名词、岗位名称保持准确性。
+                5. 统一使用敬体（です・ます）风格。
+
+                **约束：**
+                * 不进行任何内容美化、润色或扩写。
+                * 不改变原简历结构（段落、项目符号等）。
+                * 不添加主观评价。
+                * 若原文含有模糊内容，不自行推断。
                 """;
             var translationAgent = new ChatClientAgent(chatClient, instructions: translationInstructions, name: "TranslationAgent");
-            var optimizeInstructions = """
-                优化以下日语翻译，使其更加自然流畅
+            var optimizeInstructions = """                
+                请对我提供的日语文本进行优化，使其表达更加自然、流畅且符合日本母语者的书写习惯。
 
                 **输出要求：**
-                * 返回优化后的日语文本
+                * 仅返回优化后的日语文本
+                * 不改变原文含义
+                * 不增删信息，不加入主观推断
+                * 使用自然且正式的日语表达（敬体）
+                * 若存在不自然的词语或语序，请进行适当调整                
                 """;
             var optimizeAgent = new ChatClientAgent(chatClient, instructions: optimizeInstructions, name: "OptimizeAgent");
             var workflow = AgentWorkflowBuilder.BuildSequential(translationAgent, optimizeAgent);
@@ -121,7 +139,7 @@ namespace MatchingDemo
 
         public async Task<string> PerfectTranslationAsync()
         {
-            var cv = File.ReadAllText("CV1.md");
+            var cv = File.ReadAllText("CV.md");
             var results = await CultureTranslationAsync(cv);
             var companiesMessage = results.FirstOrDefault(r => r.AgentName == "FindParallelCompaniesAgent");
             var schoolsMessage = results.FirstOrDefault(r => r.AgentName == "FindParallelSchoolsAgent");
@@ -177,6 +195,40 @@ namespace MatchingDemo
             }
             return outMessages;
         }
+
+
+        public async Task<string> ApplyingMotivationAsync()
+        {
+            var chatClient = new AzureOpenAIClient(new Uri(_endpoint), _credential).GetChatClient(_deploymentName).AsIChatClient();
+            var instructions = """
+                请根据以下信息，用**自然、专业的日语**为我生成一份志望動機。
+                
+                要求：
+                * 字数控制在 **300～400字** 左右
+                * 结构包含：
+                  1. 对该职位感兴趣的原因
+                  2. 想加入该公司的理由
+                  3. 入社后能做出的贡献
+                * 语言要符合日本求职惯例，避免过度夸张
+                * 风格保持诚恳、逻辑清晰、与经历高度匹配 
+                * 结合自己的能力
+                * 结合简历的经验说明能带来什么具体贡献。
+                """;
+
+            var japneseCV = await PerfectTranslationAsync();
+            var japaneseJob = File.ReadAllText("job.md");
+            var message = $$"""
+                下面是简历：
+                {{japneseCV}}
+                ----------------
+                下面是公司介绍和职位要求：
+                {{japaneseJob}}
+                """;
+            var agent = new ChatClientAgent(chatClient, instructions: instructions, name: "MotivationAgent");
+            var response = await agent.RunAsync(message);
+            return response.Text;
+        }
+
     }
 
     public class AgentResult

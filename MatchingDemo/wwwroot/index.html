@@ -1,0 +1,284 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简历翻译与志望动机生成</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/marked@11.0.0/marked.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .section-card {
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .markdown-content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            min-height: 200px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .btn-action {
+            min-width: 120px;
+        }
+        h2 {
+            color: #0d6efd;
+            border-bottom: 2px solid #0d6efd;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <h1 class="text-center mb-4">简历翻译与求职申请系统</h1>
+        
+        <div class="row">
+            <!-- 左侧：原始中文简历 -->
+            <div class="col-lg-6">
+                <div class="card section-card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">原始中文简历</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="originalCV" class="markdown-content"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧：翻译后的简历 -->
+            <div class="col-lg-6">
+                <div class="card section-card">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">翻译后的简历</h5>
+                        <button id="translateBtn" class="btn btn-light btn-sm btn-action">翻译</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="translateLoading" class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">翻译中...</span>
+                            </div>
+                            <p class="mt-2">正在翻译，请稍候...</p>
+                        </div>
+                        <div id="translatedCV" class="markdown-content text-muted">
+                            点击"翻译"按钮查看翻译结果
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 公司和职位信息 -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card section-card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">目标公司与职位</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="jobInfo" class="markdown-content"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 志望动机 -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card section-card">
+                    <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">志望动机</h5>
+                        <button id="motivationBtn" class="btn btn-dark btn-sm btn-action">生成志望动机</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="motivationLoading" class="loading">
+                            <div class="spinner-border text-warning" role="status">
+                                <span class="visually-hidden">生成中...</span>
+                            </div>
+                            <p class="mt-2">正在生成志望动机，请稍候...</p>
+                        </div>
+                        <div id="motivationContent" class="markdown-content text-muted">
+                            点击"生成志望动机"按钮查看生成结果
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.0.0/marked.min.js"></script>
+    <script>
+        // 配置 marked
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        // 原始简历内容
+        const originalCVMarkdown = `**李明 | Backend Software Engineer**  
+📍 上海, 中国 | 📞 +86 138-xxxx-xxxx | ✉️ liming@example.com | [GitHub](https://github.com/liming) | [LinkedIn](https://linkedin.com/in/liming)
+
+---
+
+### **个人简介**
+性别：男，1988年出生，计算机科学与技术专业毕业。3年后端开发经验，精通 Java 和 Python，擅长系统设计、API开发及性能优化。具备良好的工程思维和团队协作能力，热爱编写高质量、可扩展的代码。熟悉微服务架构，致力于用技术解决实际业务问题。
+
+---
+
+### **技能清单**
+- **编程语言：** Java, Python, Go, SQL
+- **框架与技术：** Spring Boot, Django, FastAPI, gRPC, Redis, Kafka
+- **数据库：** MySQL, PostgreSQL, MongoDB
+- **其他：** 设计模式, RESTful API设计, 负载均衡, 缓存优化
+
+---
+
+### **工作经历**
+
+**后端软件工程师 | 字节跳动 | 2022.05 - 现今 | 上海**
+- 负责短视频推送系统的后端开发，设计并优化了推荐服务接口，系统QPS提升30%。
+- 主导基于Spring Cloud的微服务拆分项目，缩短了服务发布周期20%。
+- 使用Redis + Kafka实现消息缓存和异步处理，系统稳定性提升至99.99%。
+- 编写详细的技术文档并培训新人，协助团队代码评审，保证代码质量。
+
+**后端开发实习生 | 腾讯 | 2021.01 - 2021.08 | 深圳**
+- 参与企业微信后台服务开发，使用Django开发内部管理工具，减少手工操作时间约40%。
+- 优化SQL查询，平均响应时间降低20%，为后续大规模推广打下基础。
+- 与前端工程师协作，完成多个功能模块的API接口设计与联调。
+
+---
+
+### **项目经历**
+
+**高并发电商秒杀系统（个人项目）**
+- 使用Spring Boot + Redis + RabbitMQ设计秒杀服务，支撑10W+并发用户抢购。
+- 实现了库存预扣减、异步下单、消息补偿机制，有效防止超卖问题。
+
+**智能客服系统（团队项目）**
+- 基于FastAPI搭建后端服务，接入外部AI问答引擎，平均响应时间控制在100ms以内。
+- 设计了模块化接口，方便前端快速对接，提升产品开发效率。
+
+---
+
+### **教育背景**
+
+**上海交通大学 | 计算机科学与技术 | 本科 | 2017 - 2021**
+
+- 主修课程：数据结构与算法、数据库系统、操作系统、计算机网络
+- 获奖情况：ACM程序设计竞赛校级二等奖
+
+---
+
+### **证书**
+- 阿里云ACP认证：云计算工程师（2023）
+- Oracle认证Java程序员（OCP, 2022）`;
+
+        // 职位信息
+        const jobInfoMarkdown = `### 会社概要：LINE Corporation
+
+LINE は、「テクノロジーとサービスを通じてユーザーの日常に驚きと価値を提供する」ことを理念とし、2011 年にコミュニケーションアプリとしてサービスを開始しました。その後、ライフスタイル、フィンテック、Web3、コンテンツ、EC、ゲーム、エンターテインメント、AI など、多様なモバイルファースト領域へ事業を拡大し、現在は東京を本拠地としてグローバルに展開しています。
+
+---
+
+### ポジション：Backend Engineer（Senior／Staff）
+
+LINE Messaging Platform（勤務地：東京）
+
+#### **【職務概要】**
+
+* Messaging Platform チームの一員として、数億規模のユーザーを対象としたグローバルリアルタイム通信を支える基幹バックエンドシステムの設計・開発・高度化を主導する。
+* 技術的リーダーシップを担い、高可用性・高性能・高セキュリティを満たすアーキテクチャの策定および品質向上施策を推進する。
+* スケーラブルなバックエンド機能や API の設計・実装を担当し、継続的に進化するプラットフォーム要件に適応する分散システムを構築する。
+* プロダクト、SRE、セキュリティ、プラットフォーム各チームと連携し、システムの信頼性、可観測性、ユーザー体験向上に貢献する。
+* チームメンバーの技術指導、標準策定、長期的なプラットフォーム戦略の構築に寄与する。
+
+---
+
+#### **【必須スキル・経験】**
+
+* 高トラフィック環境における分散システムのアーキテクチャ設計、または重要開発領域での技術的貢献経験。
+* Java／Kotlin／Scala などを用いた大規模バックエンドサービスの開発・運用経験。
+* 中〜大規模プロジェクトのリード経験および、関係各所との調整を通じて要件を実現した実績。
+* システム監視、インシデントマネジメント、信頼性向上に関する深い知識。
+* 自律的かつ成果志向であり、優れたチームワーク力・コミュニケーション力を備えていること。
+* 技術的および業務上のコミュニケーションに必要な英語または日本語の高い運用能力。
+
+---
+
+#### **【歓迎スキル・経験】**
+
+* Redis、MongoDB、HBase、Kafka などの分散データストア技術の活用経験。
+* SLIs／SLOs に基づく SRE プラクティス、監視・フォールトトレランス設計への深い理解。
+* バックエンド領域におけるセキュリティエンジニアリングの知識。
+* CI／CD、テスト戦略、Kubernetes 等のコンテナ基盤、Prometheus・Grafana など可観測性ツールの利用経験。
+
+---
+
+#### **【待遇・就業条件】**
+
+* 想定年収：**1,200 万円〜 2,000 万円**
+* 月給例：基本給 621,000 円〜、固定残業代（35 時間相当）119,000 円〜 ほか
+* 雇用形態：正社員（無期）、試用期間 3 ヶ月
+* 勤務地：東京都千代田区紀尾井町 1-3（紀尾井タワー）
+* 勤務時間：フレックスタイム制（標準労働時間 7 時間 45 分／日、コアタイムなし）`;
+
+        // 页面加载时渲染原始内容
+        document.getElementById('originalCV').innerHTML = marked.parse(originalCVMarkdown);
+        document.getElementById('jobInfo').innerHTML = marked.parse(jobInfoMarkdown);
+
+        // 翻译按钮点击事件
+        document.getElementById('translateBtn').addEventListener('click', async function() {
+            const btn = this;
+            const loading = document.getElementById('translateLoading');
+            const content = document.getElementById('translatedCV');
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            content.style.display = 'none';
+            
+            try {
+                const response = await fetch('/translate');
+                const markdown = await response.text();
+                content.innerHTML = marked.parse(markdown);
+            } catch (error) {
+                content.innerHTML = `<div class="alert alert-danger">翻译失败: ${error.message}</div>`;
+            } finally {
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                btn.disabled = false;
+            }
+        });
+
+        // 志望动机按钮点击事件
+        document.getElementById('motivationBtn').addEventListener('click', async function() {
+            const btn = this;
+            const loading = document.getElementById('motivationLoading');
+            const content = document.getElementById('motivationContent');
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            content.style.display = 'none';
+            
+            try {
+                const response = await fetch('/motivation');
+                const markdown = await response.text();
+                content.innerHTML = marked.parse(markdown);
+            } catch (error) {
+                content.innerHTML = `<div class="alert alert-danger">生成失败: ${error.message}</div>`;
+            } finally {
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
