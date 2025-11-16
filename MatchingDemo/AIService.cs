@@ -389,7 +389,17 @@ namespace MatchingDemo
         #region 位置匹配
         public async Task<List<Job>> MatchJobsAsync(double latitude, double longitude, string keyword)
         {
-           
+            var sql = """
+                SELECT job_title,place_name
+                FROM jobs
+                WHERE ST_DistanceSphere(
+                        ST_MakePoint(longitude, latitude),
+                        ST_MakePoint(139.7088135, 35.7283911)
+                      ) <= 4500;
+                
+                """;
+
+
             return new List<Job>
             {
                 new Job
