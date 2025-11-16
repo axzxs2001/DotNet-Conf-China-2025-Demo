@@ -5,7 +5,9 @@ using Microsoft.Extensions.AI;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
 using OpenAI.Chat;
 using System.ClientModel;
+using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
+using System.Text;
 using System.Text.Json;
 
 #pragma warning disable
@@ -16,18 +18,23 @@ namespace MatchingDemo
         Task<string> PerfectTranslationAsync();
         Task<List<AgentResult>> CultureTranslationAsync(string cv);
         Task<string> ApplyingMotivationAsync();
+        Task<string> OptimizePhotosAsync(string name, string prompt);
     }
     public class AIService : IAIService
     {
         private readonly string _endpoint;
         private readonly string _deploymentName;
         private readonly ApiKeyCredential _credential;
+        private readonly string _googleApiKey;
+        private readonly string _googleEndpoint;
         public AIService()
         {
             var parmeters = File.ReadAllLines("C:/gpt/azure_key.txt");
             _endpoint = parmeters[1];
             _deploymentName = parmeters[0];
             _credential = new ApiKeyCredential(parmeters[2]);
+            _googleApiKey = File.ReadAllText("C:/gpt/googlecloudkey.txt");
+            _googleEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent";
         }
 
         /// <summary>
@@ -67,7 +74,7 @@ namespace MatchingDemo
                 """;
             var optimizeAgent = new ChatClientAgent(chatClient, instructions: optimizeInstructions, name: "OptimizeAgent");
             var workflow = AgentWorkflowBuilder.BuildSequential(translationAgent, optimizeAgent);
-            return workflow.AsAgent(name: "TranslationAgent", description: "完成中文到日文的翻译优化");
+            return workflow.AsAgent(name: "OptimizeAgent", description: "完成中文到日文的翻译优化");
         }
         /// <summary>
         /// 处理平行大学代理工作流 
@@ -100,7 +107,7 @@ namespace MatchingDemo
                 """;
             var findParallelSchoolsAgent = new ChatClientAgent(chatClient, instructions: findParallelSchoolsInstructions, name: "FindParallelSchoolsAgent");
             var workflow = AgentWorkflowBuilder.BuildSequential(extractParallelSchoolsAgent, findParallelSchoolsAgent);
-            return workflow.AsAgent(name: "ParallelSchoolsAgent", description: "完成中日大学平行转换");
+            return workflow.AsAgent(name: "FindParallelSchoolsAgent", description: "完成中日大学平行转换");
         }
         /// <summary>
         /// 处理平行公司代理工作流
@@ -133,9 +140,8 @@ namespace MatchingDemo
                 """;
             var findParallelCompaniesAgent = new ChatClientAgent(chatClient, instructions: findParallelSchoolsInstructions, name: "FindParallelCompaniesAgent");
             var workflow = AgentWorkflowBuilder.BuildSequential(extractParallelCompaniesAgent, findParallelCompaniesAgent);
-            return workflow.AsAgent(name: "ParallelCompaniesAgent", description: "完成中日公司平行转换");
+            return workflow.AsAgent(id: "FindParallelCompaniesAgent", name: "FindParallelCompaniesAgent", description: "完成中日公司平行转换");
         }
-
 
         public async Task<string> PerfectTranslationAsync()
         {
@@ -166,7 +172,37 @@ namespace MatchingDemo
 
             return response.Text;
         }
+        //public async Task<List<AgentResult>> CultureTranslationAsync(string cv)
+        //{
+        //    var translationAgent = await TranslationAsync();
+        //    var parallelSchoolAgent = await FindParallelSchoolsAsync();
+        //    var parallelCompaniesAgent = await FindParallelCompaniesAsync();
+        //    var agents = new AIAgent[] { translationAgent, parallelSchoolAgent, parallelCompaniesAgent };
+        //    var workflow = AgentWorkflowBuilder.BuildConcurrent(agents);
 
+        //    var results = await RunWorkflowAsync(workflow, [new Microsoft.Extensions.AI.ChatMessage(ChatRole.User, cv)]);
+        //    List<AgentResult> outMessages = new();
+        //    foreach (var item in results)
+        //    {
+        //        outMessages.Add(new AgentResult { AgentName = item.AuthorName, Result = item.Text });
+        //    }
+        //    return outMessages;
+
+        //    static async Task<List<Microsoft.Extensions.AI.ChatMessage>> RunWorkflowAsync(Workflow workflow, List<Microsoft.Extensions.AI.ChatMessage> messages)
+        //    {
+        //        List<Microsoft.Extensions.AI.ChatMessage> outMessages = new();
+        //        await using StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+        //        await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+        //        await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+        //        {
+        //            if (evt is WorkflowOutputEvent outputEvent)
+        //            {
+        //                outMessages = outputEvent.As<List<Microsoft.Extensions.AI.ChatMessage>>()!;       
+        //            }
+        //        }
+        //        return outMessages;
+        //    }          
+        //}
         public async Task<List<AgentResult>> CultureTranslationAsync(string cv)
         {
             var translationAgent = await TranslationAsync();
@@ -195,8 +231,6 @@ namespace MatchingDemo
             }
             return outMessages;
         }
-
-
         public async Task<string> ApplyingMotivationAsync()
         {
             var chatClient = new AzureOpenAIClient(new Uri(_endpoint), _credential).GetChatClient(_deploymentName).AsIChatClient();
@@ -227,6 +261,77 @@ namespace MatchingDemo
             var agent = new ChatClientAgent(chatClient, instructions: instructions, name: "MotivationAgent");
             var response = await agent.RunAsync(message);
             return response.Text;
+        }
+
+
+        public async Task<string> OptimizePhotosAsync(string name, string prompt)
+        {
+
+            var cvBytes = await File.ReadAllBytesAsync($"wwwroot/{name}");
+            string cvB64 = Convert.ToBase64String(cvBytes);
+
+            var instruction = $$"""
+                基于用户提供的照片转换成符合日本求职简历照片要求的专业证件照，要求如下：
+                1. 不要改变面部特征，保持与原照片相似度高。
+                2. 比例：高分辨率，宽高比是3:4。
+                3. 背景：无图案，无边框。
+                4. 服装：深色正式西装外套 + 浅色衬衫／上衣（女士款）。
+                5. 发型：整洁，前刘海不遮眼，避免过于鲜艳发色。
+                6. 化妆／妆容：自然、清爽、不过度。
+                7. 表情：轻微微笑，嘴唇闭合，给人明亮、专业印象。
+                8. 配饰：避免夸张耳环、项链、帽子等干扰专业形象。
+                9. 光线与构图：正面胸部以上视角，脸部清晰、光线均匀，无明显阴影或反光。     
+                其他要求如下：
+                {{prompt}}
+                """;
+            var requestBody = new
+            {
+                contents = new[]
+                {
+                    new
+                    {
+                        role = "user",
+                        parts = new object[]
+                        {
+                            new
+                            {
+                                inline_data = new
+                                {
+                                    mime_type = "image/png",
+                                    data = cvB64
+                                }
+                            },
+                            new { text = instruction }
+                        }
+                    }
+                }
+            };
+
+            var url = $"{_googleEndpoint}?key={_googleApiKey}";
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var json = JsonSerializer.Serialize(requestBody);
+            using var resp = await http.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+            resp.EnsureSuccessStatusCode();
+            using var stream = await resp.Content.ReadAsStreamAsync();
+            using var doc = await JsonDocument.ParseAsync(stream);
+            int imageIndex = 0;
+            foreach (var cand in doc.RootElement.GetProperty("candidates").EnumerateArray())
+            {
+                foreach (var part in cand.GetProperty("content").GetProperty("parts").EnumerateArray())
+                {
+                    if (part.TryGetProperty("inlineData", out var inline))
+                    {
+                        var b64 = inline.GetProperty("data").GetString();
+                        var bytes = Convert.FromBase64String(b64!);
+                        var file = $"photos/NewPhotos/cv_{DateTime.Now.ToString("yyyyMMddHHmmss")}.png";
+                        await File.WriteAllBytesAsync(Path.Combine("wwwroot", file), bytes);
+                        Console.WriteLine($"Saved: {file}");
+                        return file;
+                    }
+                }
+            }
+            return null;
         }
 
     }
