@@ -38,6 +38,7 @@ namespace MatchingDemo
             _googleEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent";
         }
 
+        #region 翻译优化代理工作流
         /// <summary>
         /// 翻译优化代理工作流
         /// </summary>
@@ -263,7 +264,9 @@ namespace MatchingDemo
             var response = await agent.RunAsync(message);
             return response.Text;
         }
+        #endregion
 
+        #region 照片优化代理工作流
         async Task<string> DetermineGenderAsync(string name)
         {
             var chatClient = new AzureOpenAIClient(new Uri(_endpoint), _credential).GetChatClient(_deploymentName).AsIChatClient();
@@ -382,7 +385,32 @@ namespace MatchingDemo
             }
             return null;
         }
-
+        #endregion
+        #region 位置匹配
+        public async Task<List<Job>> MatchJobsAsync(double latitude, double longitude, string keyword)
+        {
+           
+            return new List<Job>
+            {
+                new Job
+                {
+                    PlaceName = "东京",
+                    JobTitle = "软件工程师",
+                    Company = "东京科技公司",
+                    Latitude = 35.6895,
+                    Longitude = 139.6917
+                },
+                new Job
+                {
+                    PlaceName = "大阪",
+                    JobTitle = "数据分析师",
+                    Company = "大阪数据公司",
+                    Latitude = 34.6937,
+                    Longitude = 135.5023
+                }
+            };
+        }
+        #endregion
     }
 
     public class AgentResult
@@ -390,5 +418,35 @@ namespace MatchingDemo
         public string AgentName { get; set; }
         public string Result { get; set; }
     }
+
+
+    public class Job
+    {
+        /// <summary>
+        /// 地点名称
+        /// </summary>
+        public string PlaceName { get; set; }
+
+        /// <summary>
+        /// 职位名称
+        /// </summary>
+        public string JobTitle { get; set; }
+
+        /// <summary>
+        /// 公司名称
+        /// </summary>
+        public string Company { get; set; }
+
+        /// <summary>
+        /// 经度
+        /// </summary>
+        public double Longitude { get; set; }
+
+        /// <summary>
+        /// 纬度
+        /// </summary>
+        public double Latitude { get; set; }
+    }
+
 }
 
