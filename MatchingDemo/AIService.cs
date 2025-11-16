@@ -1,4 +1,5 @@
 ﻿using Azure.AI.OpenAI;
+using Azure.Identity;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
@@ -263,14 +264,40 @@ namespace MatchingDemo
             return response.Text;
         }
 
+        async Task<string> DetermineGenderAsync(string name)
+        {
+            var chatClient = new AzureOpenAIClient(new Uri(_endpoint), _credential).GetChatClient(_deploymentName).AsIChatClient();
+            var instructions = """
+                对输入图片进行人物分析，并根据视觉特征推测人物的性别呈现。
+                主要能力：
+                检测图片中的人物
+                分析面部与身体视觉特征
+                输出“男性”或“女性”的推测及置信度
+                在无法判断时返回“不确定”
+                """;
+
+            var agent = chatClient.CreateAIAgent(name: "DetermineGenderAgent", instructions: instructions);
+
+            var cvBytes = await File.ReadAllBytesAsync($"wwwroot/{name}");
+            Microsoft.Extensions.AI.ChatMessage message = new(ChatRole.User, [
+                new TextContent("判断该人的性别是男性还是女性，只需要返回“男性”或“女性”。"),
+                new DataContent( cvBytes, "image/jpeg")
+                ]);
+
+            var thread = agent.GetNewThread();
+            var response = await agent.RunAsync(message, thread);
+            return response.Text;
+        }
 
         public async Task<string> OptimizePhotosAsync(string name, string prompt)
         {
-
+            var sex = await DetermineGenderAsync(name);
             var cvBytes = await File.ReadAllBytesAsync($"wwwroot/{name}");
             string cvB64 = Convert.ToBase64String(cvBytes);
-
-            var instruction = $$"""
+            var instruction = "";
+            if (sex.Contains("女"))
+            {
+                instruction = $$"""
                 基于用户提供的照片转换成符合日本求职简历照片要求的专业证件照，要求如下：
                 1. 不要改变面部特征，保持与原照片相似度高。
                 2. 比例：高分辨率，宽高比是3:4。
@@ -284,10 +311,32 @@ namespace MatchingDemo
                 其他要求如下：
                 {{prompt}}
                 """;
-            var requestBody = new
+            }else if (sex.Contains("男"))
             {
-                contents = new[]
+                instruction = $$"""
+                基于用户提供的照片转换成符合日本求职简历照片要求的专业证件照，要求如下：
+                1. 不要改变面部特征，保持与原照片相似度高。
+                2. 比例：高分辨率，宽高比3:4（例如4 cm×3 cm或企业指定尺寸）。
+                3. 背景：纯色、无图案、无边框。
+                4. 服装：深色西装外套 + 浅色衬衫，领口扣上，必须佩戴领带。
+                5. 发型：整洁、干净刮胡须（或胡须修整干净），避免蓬乱或过于时髦的造型。
+                6. 妆容／仪表：男士建议保持自然清爽，无须浓妆，但整体形象须干净、整洁。
+                7. 表情：面向镜头，肩膀平直，略带微笑或自然表情，避免大笑露齿。
+                8. 配饰：避免显眼饰品（大耳环、帽子、显著项链等），尽量简洁。
+                9. 光线与构图：正面胸部以上视角，脸部清晰、光线均匀、无明显阴影或反光。
+                10. 整体氛围：看起来像商务／面试用职业照，而不是休闲或生活自拍。
+                其他要求如下：
+                {{prompt}}
+                """;
+            }
+            else
+            {
+                return null;
+            }
+                var requestBody = new
                 {
+                    contents = new[]
+                    {
                     new
                     {
                         role = "user",
@@ -305,7 +354,7 @@ namespace MatchingDemo
                         }
                     }
                 }
-            };
+                };
 
             var url = $"{_googleEndpoint}?key={_googleApiKey}";
             using var http = new HttpClient();

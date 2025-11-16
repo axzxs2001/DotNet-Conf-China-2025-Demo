@@ -31,6 +31,12 @@
     <Content Update="wwwroot\photos\cv_photo2.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Update="wwwroot\photos\cv_photo5.jpg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="wwwroot\photos\NewPhotos\" />
   </ItemGroup>
 
 </Project>
