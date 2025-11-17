@@ -1,15 +1,20 @@
 ﻿using Azure.AI.OpenAI;
 using Azure.Identity;
+using Dapper;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
+using Npgsql;
+using OpenAI;
 using OpenAI.Chat;
 using System.ClientModel;
+using System.ComponentModel;
 using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 #pragma warning disable
 namespace MatchingDemo
@@ -20,6 +25,9 @@ namespace MatchingDemo
         Task<List<AgentResult>> CultureTranslationAsync(string cv);
         Task<string> ApplyingMotivationAsync();
         Task<string> OptimizePhotosAsync(string name, string prompt);
+
+        Task<Jobs> MatchJobsAsync(string prompt);
+
     }
     public class AIService : IAIService
     {
@@ -28,7 +36,9 @@ namespace MatchingDemo
         private readonly ApiKeyCredential _credential;
         private readonly string _googleApiKey;
         private readonly string _googleEndpoint;
-        public AIService()
+        private readonly string _connectionString;
+        private readonly JobManagerPlugin _jobManagerPlugin;
+        public AIService(JobManagerPlugin jobManagerPlugin)
         {
             var parmeters = File.ReadAllLines("C:/gpt/azure_key.txt");
             _endpoint = parmeters[1];
@@ -36,6 +46,7 @@ namespace MatchingDemo
             _credential = new ApiKeyCredential(parmeters[2]);
             _googleApiKey = File.ReadAllText("C:/gpt/googlecloudkey.txt");
             _googleEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent";
+            _jobManagerPlugin = jobManagerPlugin;
         }
 
         #region 翻译优化代理工作流
@@ -314,7 +325,8 @@ namespace MatchingDemo
                 其他要求如下：
                 {{prompt}}
                 """;
-            }else if (sex.Contains("男"))
+            }
+            else if (sex.Contains("男"))
             {
                 instruction = $$"""
                 基于用户提供的照片转换成符合日本求职简历照片要求的专业证件照，要求如下：
@@ -336,10 +348,10 @@ namespace MatchingDemo
             {
                 return null;
             }
-                var requestBody = new
+            var requestBody = new
+            {
+                contents = new[]
                 {
-                    contents = new[]
-                    {
                     new
                     {
                         role = "user",
@@ -357,7 +369,7 @@ namespace MatchingDemo
                         }
                     }
                 }
-                };
+            };
 
             var url = $"{_googleEndpoint}?key={_googleApiKey}";
             using var http = new HttpClient();
@@ -387,38 +399,38 @@ namespace MatchingDemo
         }
         #endregion
         #region 位置匹配
-        public async Task<List<Job>> MatchJobsAsync(double latitude, double longitude, string keyword)
+        public async Task<Jobs> MatchJobsAsync(string prompt)
         {
-            var sql = """
-                SELECT job_title,place_name
-                FROM jobs
-                WHERE ST_DistanceSphere(
-                        ST_MakePoint(longitude, latitude),
-                        ST_MakePoint(139.7088135, 35.7283911)
-                      ) <= 4500;
-                
-                """;
-
-
-            return new List<Job>
+            var tools = _jobManagerPlugin.AsAITools().ToList();
+            var chatClient = new AzureOpenAIClient(new Uri(_endpoint), _credential).GetChatClient(_deploymentName).AsIChatClient();
+            var opt = new ChatClientAgentOptions(name: "JobMatchingAgent", instructions: "你是一个友好的助手")
             {
-                new Job
-                {
-                    PlaceName = "东京",
-                    JobTitle = "软件工程师",
-                    Company = "东京科技公司",
-                    Latitude = 35.6895,
-                    Longitude = 139.6917
-                },
-                new Job
-                {
-                    PlaceName = "大阪",
-                    JobTitle = "数据分析师",
-                    Company = "大阪数据公司",
-                    Latitude = 34.6937,
-                    Longitude = 135.5023
+                ChatOptions = new ChatOptions()
+                { 
+                    Tools = tools,
+                    ResponseFormat = Microsoft.Extensions.AI.ChatResponseFormat.ForJsonSchema<Jobs>()
+                       
                 }
             };
+            var agent = chatClient.CreateAIAgent(opt);
+            var userMessage = """
+                姓名： 张伟
+                地址： 日本东京都丰岛区东池袋 1 丁目 19-1，邮编 170-0013
+                坐标： 北纬 35.7319952° ，东经 139.7155487°
+                联系电话： 080-1234-5678
+                电子邮箱： zhangwei@example.com                
+                """;
+            prompt = $$"""
+                {{userMessage}}
+                ---------------
+                上面是用户信息，请按照下面用户要求，返回职位列表，不要生成不真实的职位信息，必须基于数据库中存在的职位信息进行匹配。
+                用户的要求如下：
+                {{prompt}}
+                """;
+            var updates = agent.RunStreamingAsync(prompt);
+
+            return (await updates.ToAgentRunResponseAsync()).Deserialize<Jobs>(JsonSerializerOptions.Web);
+
         }
         #endregion
     }
@@ -429,33 +441,74 @@ namespace MatchingDemo
         public string Result { get; set; }
     }
 
+    public class JobManagerPlugin
+    {
+        private readonly string _connectionString;
+        public JobManagerPlugin()
+        {
+            _connectionString = "Host=127.0.0.1;Username=postgres;Password=postgres2018;Database=TestDB";
+        }
+        [Description("根据经纬度从数据库查询方圆公里范围内的职位")]
+        public async Task<Jobs> FindMatchingJobsAsync([Description("纬度")] double latitude, [Description("经度")] double longitude, [Description("周围米数")] float length)
+        {
+            Console.WriteLine($"FindMatchingJobsAsync收到的参数，经度：{longitude}, 纬度：{latitude}, 范围：{length} 米");
+            var sql = """
+                SELECT job_title as JobTitle,place_name as PlaceName,company as Company
+                FROM jobs
+                WHERE ST_DistanceSphere(
+                        ST_MakePoint(longitude, latitude),
+                        ST_MakePoint(@longitude, @latitude)
+                      ) <= @length;
+                """;
+            using var connection = new NpgsqlConnection(_connectionString);
+            var command = new CommandDefinition(sql, new { longitude, latitude, length });
+            var jobs = (await connection.QueryAsync<Job>(command)).AsList();
+            return new Jobs { Items = jobs };
+        }
+
+        public IEnumerable<AITool> AsAITools()
+        {
+            yield return AIFunctionFactory.Create(this.FindMatchingJobsAsync);
+        }
+    }
+
+    public class Jobs
+    {
+        [JsonPropertyName("jobs")]
+        public List<Job> Items { get; set; }
+    }
 
     public class Job
     {
         /// <summary>
         /// 地点名称
         /// </summary>
+        [JsonPropertyName(name: "PlaceName")]
         public string PlaceName { get; set; }
 
         /// <summary>
         /// 职位名称
         /// </summary>
+        [JsonPropertyName(name: "JobTitle")]
         public string JobTitle { get; set; }
 
         /// <summary>
         /// 公司名称
         /// </summary>
+        [JsonPropertyName(name: "Company")]
         public string Company { get; set; }
 
         /// <summary>
         /// 经度
         /// </summary>
-        public double Longitude { get; set; }
+        [JsonPropertyName(name: "Longitude")]
+        public double? Longitude { get; set; }
 
         /// <summary>
         /// 纬度
         /// </summary>
-        public double Latitude { get; set; }
+        [JsonPropertyName(name: "Latitude")]
+        public double? Latitude { get; set; }
     }
 
 }
