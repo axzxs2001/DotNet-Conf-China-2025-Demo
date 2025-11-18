@@ -1,4 +1,5 @@
 ﻿using Azure.AI.OpenAI;
+using Azure.AI.Projects.OpenAI;
 using Azure.Identity;
 using Dapper;
 using Microsoft.Agents.AI;
@@ -7,11 +8,13 @@ using Microsoft.Extensions.AI;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
 using Npgsql;
 using OpenAI;
-using OpenAI.Chat;
+using System.Linq;
 using System.ClientModel;
+using System.Collections;
 using System.ComponentModel;
 using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -401,36 +404,88 @@ namespace MatchingDemo
         #region 位置匹配
         public async Task<Jobs> MatchJobsAsync(string prompt)
         {
-            var tools = _jobManagerPlugin.AsAITools().ToList();
+            var cv = File.ReadAllText("CV.md");
             var chatClient = new AzureOpenAIClient(new Uri(_endpoint), _credential).GetChatClient(_deploymentName).AsIChatClient();
-            var opt = new ChatClientAgentOptions(name: "JobMatchingAgent", instructions: "你是一个友好的助手")
+            var analyzeResumeAgentInstructions = """
+                **你的任务：**
+                根据用户输入，从“已存在的简历内容”中提取 *所有相关信息*。
+                **不得生成、补充、推测任何简历中不存在的内容。** 
+                ## **执行规则**
+                1. 分析用户输入中的关键词、意图（技能、项目、经历、证书、地点、岗位等）。
+                2. 在已存的简历中查找所有与这些关键词相关的内容。
+                3. 仅返回简历中存在的原始信息，不作润色、不扩写。
+                4. 若用户涉及位置筛选（如“10公里内的工作”），提取简历中的地址与经纬度。
+                5. 若无匹配内容，返回 `"not_found": true"`。
+                6. 输出统一 JSON 字段（格式如下）。
+                ## **输出格式（必须 JSON）**
+                ```json
+                {
+                  "matched_fields": {
+                    "personal_info": {},
+                    "education": [],
+                    "experiences": [],
+                    "projects": [],
+                    "skills": [],
+                    "certificates": [],
+                    "others": [],
+                    "job_search_related_info": {}
+                  },
+                  "not_found": false
+                }
+                ```
+                ## ⭐ **最终执行指令（最核心一句）**
+                > **从现有简历中筛选出与用户输入相关的所有信息，以指定 JSON 格式返回；不得生成不存在于简历的内容；找不到则 `"not_found": true"`。**                
+                """;
+            var analyzeResumeAgent = chatClient.CreateAIAgent(name: "AnalyzeResumeAgent", instructions: analyzeResumeAgentInstructions);
+
+
+            var queryAgentInstructions = """
+                你是检索执行代理。根据用户输入与上一阶段 AnalyzeResumeAgent 的结构化结果，从数据库查询符合条件的职位。
+                输出要求（必须严格遵循）：
+                - 仅输出 JSON，不得包含任何解释或多余文本。             
+                - 若无结果或无法调用工具，返回 {"jobs": []}。
+                约束：
+                - 不扩写、不润色、不推测；仅基于已有上下文事实。
+                - 输出中不得包含步骤说明或思考过程。
+                """;
+            var opt = new ChatClientAgentOptions(name: "QueryAgent", instructions: queryAgentInstructions)
             {
                 ChatOptions = new ChatOptions()
-                { 
-                    Tools = tools,
+                {
+                    Tools = _jobManagerPlugin.AsAITools().ToList(),
                     ResponseFormat = Microsoft.Extensions.AI.ChatResponseFormat.ForJsonSchema<Jobs>()
-                       
                 }
             };
-            var agent = chatClient.CreateAIAgent(opt);
-            var userMessage = """
-                姓名： 张伟
-                地址： 日本东京都丰岛区东池袋 1 丁目 19-1，邮编 170-0013
-                坐标： 北纬 35.7319952° ，东经 139.7155487°
-                联系电话： 080-1234-5678
-                电子邮箱： zhangwei@example.com                
-                """;
-            prompt = $$"""
-                {{userMessage}}
-                ---------------
-                上面是用户信息，请按照下面用户要求，返回职位列表，不要生成不真实的职位信息，必须基于数据库中存在的职位信息进行匹配。
-                用户的要求如下：
+            var queryAgent = chatClient.CreateAIAgent(opt);
+            var workflow = AgentWorkflowBuilder.BuildSequential(analyzeResumeAgent, queryAgent);
+
+            var message = $$"""
+                用户的简历：
+                {{cv}}
+                ---------------------
+                用户输入内容：
                 {{prompt}}
                 """;
-            var updates = agent.RunStreamingAsync(prompt);
 
-            return (await updates.ToAgentRunResponseAsync()).Deserialize<Jobs>(JsonSerializerOptions.Web);
 
+            await using StreamingRun run = await InProcessExecution.StreamAsync(workflow, new Microsoft.Extensions.AI.ChatMessage(ChatRole.User, message));
+            await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+            await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+            {
+
+                if (evt is WorkflowOutputEvent outputEvent)
+                {
+                    if (outputEvent.Data != null && outputEvent.Data is IList<Microsoft.Extensions.AI.ChatMessage>)
+                    {
+                        var messages = outputEvent.Data as IList<Microsoft.Extensions.AI.ChatMessage>;
+                        if (messages != null && messages.Count > 0)
+                        {
+                            return System.Text.Json.JsonSerializer.Deserialize<Jobs>(messages.Last().Text, JsonSerializerOptions.Web);
+                        }
+                    }
+                }
+            }
+            return new Jobs();
         }
         #endregion
     }

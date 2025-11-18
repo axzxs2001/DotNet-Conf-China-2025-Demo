@@ -1,0 +1,319 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>职位搜索</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .search-box {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        textarea {
+            flex: 1;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 15px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: none;
+            min-height: 60px;
+            max-height: 300px;
+            transition: border-color 0.3s;
+            outline: none;
+        }
+
+            textarea:focus {
+                border-color: #667eea;
+            }
+
+        .send-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 12px;
+            width: 56px;
+            height: 40px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+            flex-shrink: 0;
+        }
+
+            .send-btn:hover:not(:disabled) {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            }
+
+            .send-btn:active:not(:disabled) {
+                transform: translateY(0);
+            }
+
+            .send-btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+
+            .send-btn svg {
+                width: 24px;
+                height: 24px;
+                fill: white;
+            }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: white;
+            font-size: 18px;
+        }
+
+        .results {
+            display: grid;
+            gap: 20px;
+        }
+
+        .job-card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+            .job-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+            }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .job-title {
+            font-size: 22px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+            .job-title::before {
+                content: '💼';
+                font-size: 24px;
+            }
+
+        .job-company {
+            font-size: 18px;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .job-place {
+            font-size: 16px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+            .job-place::before {
+                content: '📍';
+                font-size: 16px;
+            }
+
+        .no-results {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            color: #999;
+            font-size: 18px;
+        }
+
+        .error {
+            background: #ffe6e6;
+            border: 2px solid #ff4444;
+            border-radius: 12px;
+            padding: 20px;
+            color: #cc0000;
+            margin-bottom: 20px;
+        }
+
+        .results-header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 16px 24px;
+            margin-bottom: 20px;
+            color: #667eea;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+            .results-header::before {
+                content: '✨';
+                font-size: 20px;
+            }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="search-box">
+            <div class="input-wrapper">
+                <textarea id="searchInput" placeholder="请输入职位搜索需求,例如:我想找一份北京的软件开发工作..." rows="2"></textarea>
+                <button class="send-btn" id="sendBtn" onclick="searchJobs()">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div id="errorContainer"></div>
+        <div id="loadingContainer"></div>
+        <div id="resultsContainer" class="results"></div>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const loadingContainer = document.getElementById('loadingContainer');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const errorContainer = document.getElementById('errorContainer');
+
+        // 自动调整文本框高度
+        searchInput.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 300) + 'px';
+        });
+
+        // 支持 Ctrl+Enter 发送
+        searchInput.addEventListener('keydown', function (e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                searchJobs();
+            }
+        });
+
+        async function searchJobs() {
+            const prompt = searchInput.value.trim();
+
+            if (!prompt) {
+                showError('请输入搜索内容');
+                return;
+            }
+
+            // 清空之前的结果和错误
+            errorContainer.innerHTML = '';
+            resultsContainer.innerHTML = '';
+
+            // 显示加载状态
+            sendBtn.disabled = true;
+            loadingContainer.innerHTML = '<div class="loading">🔍 正在搜索职位...</div>';
+
+            try {
+                const response = await fetch(`/search?prompt=${encodeURIComponent(prompt)}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // 提取职位列表 - 支持多种可能的字段名
+                const jobs = data.jobs || data.items || data.Jobs || data.Items || data.value?.jobs || [];
+                displayResults(jobs);
+
+            } catch (error) {
+                console.error('搜索失败:', error);
+                showError('搜索失败,请稍后重试: ' + error.message);
+            } finally {
+                loadingContainer.innerHTML = '';
+                sendBtn.disabled = false;
+            }
+        }
+
+        function displayResults(jobs) {
+            if (!Array.isArray(jobs) || jobs.length === 0) {
+                resultsContainer.innerHTML = '<div class="no-results">😔 未找到匹配的职位</div>';
+                return;
+            }
+
+            // 显示结果统计
+            const resultsHeader = `<div class="results-header">找到 ${jobs.length} 个匹配职位</div>`;
+
+            // 生成职位卡片
+            const jobCards = jobs.map((job, index) => {
+                // 统一字段获取 - 优先使用 PascalCase
+                const jobTitle = job.JobTitle || job.jobTitle || '未知职位';
+                const company = job.Company || job.company || '未知公司';
+                const placeName = job.PlaceName || job.placeName || '未知地点';
+
+                return `
+                        <div class="job-card" style="animation-delay: ${index * 0.05}s">
+                            <div class="job-title">${escapeHtml(jobTitle)}</div>
+                            <div class="job-company">${escapeHtml(company)}</div>
+                            <div class="job-place">${escapeHtml(placeName)}</div>
+                        </div>
+                    `;
+            }).join('');
+
+            resultsContainer.innerHTML = resultsHeader + jobCards;
+        }
+
+        function showError(message) {
+            errorContainer.innerHTML = `<div class="error">⚠️ ${escapeHtml(message)}</div>`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

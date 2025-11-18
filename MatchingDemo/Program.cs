@@ -52,23 +52,10 @@ app.MapPost("/optimizephoto", (IAIService aiService, [FromBody] PhotoData photoD
 
 app.MapGet("/search", async (IAIService aiService, string prompt) =>
 {
-    return await aiService.MatchJobsAsync(prompt);
+    return new JsonResult(await aiService.MatchJobsAsync(prompt));
 });
 
 app.Run();
-
-
-static float CosineSimilarity(ReadOnlySpan<float> x, ReadOnlySpan<float> y)
-{
-    float dot = 0, magX = 0, magY = 0;
-    for (int i = 0; i < x.Length; i++)
-    {
-        dot += x[i] * y[i];
-        magX += x[i] * x[i];
-        magY += y[i] * y[i];
-    }
-    return dot / (MathF.Sqrt(magX) * MathF.Sqrt(magY));
-}
 
 
 class PhotoData
