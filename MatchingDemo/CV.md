@@ -1,6 +1,7 @@
 **李明 | Backend Software Engineer**
 
  📞 +86 138-xxxx-xxxx | ✉️ liming@example.com | [GitHub](https://github.com/liming) | [LinkedIn](https://linkedin.com/in/liming)
+ 
  📍 住址：日本东京都丰岛区东池袋 1 丁目 19-1，邮编 170-0013（北纬 35.7319952°，东经 139.7155487°）
 
 ---
