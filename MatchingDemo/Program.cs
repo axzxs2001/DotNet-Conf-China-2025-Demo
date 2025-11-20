@@ -1,28 +1,6 @@
 using MatchingDemo;
 using Microsoft.AspNetCore.Mvc;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddScoped<IAIService, AIService>();
