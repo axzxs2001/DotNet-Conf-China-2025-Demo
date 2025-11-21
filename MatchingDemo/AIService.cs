@@ -48,7 +48,7 @@ namespace MatchingDemo
             _deploymentName = parmeters[0];
             _credential = new ApiKeyCredential(parmeters[2]);
             _googleApiKey = File.ReadAllText("C:/gpt/googlecloudkey.txt");
-            _googleEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent";
+            _googleEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
             _jobManagerPlugin = jobManagerPlugin;
         }
 
